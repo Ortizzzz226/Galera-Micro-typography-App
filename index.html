@@ -16,7 +16,7 @@
 .check.switch:has(#synon){display:none!important}
 .appver{font-family:var(--f-mono);font-size:11px;text-transform:uppercase;color:var(--muted);margin:0}</style>
 <script>
-window.GALERA_APP = "2026.10.19-0927";
+window.GALERA_APP = "2026.10.19-0941";
 (function(){
   var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   var MIME = {txt:"text/plain;charset=utf-8", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document", zip:"application/zip", pdf:"application/pdf", svg:"image/svg+xml", galera:"application/json"};
@@ -43,7 +43,7 @@ window.GALERA_APP = "2026.10.19-0927";
   if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){});
   window.addEventListener("DOMContentLoaded", function(){
     var n = document.getElementById("storeNote");
-    if(n){ var p = document.createElement("p"); p.className = "appver"; p.textContent = "Galera app · versión 2026.10.19-0927"; var look = document.getElementById("look"); (look || n).parentNode.appendChild(p); }
+    if(n){ var p = document.createElement("p"); p.className = "appver"; p.textContent = "Galera app · versión 2026.10.19-0941"; var look = document.getElementById("look"); (look || n).parentNode.appendChild(p); }
   });
 })();
 </script>
@@ -416,6 +416,8 @@ a{color:var(--fg);text-decoration-color:var(--signal);text-underline-offset:2px}
 .drawer-actions.io{margin-top:-6px}
 .drawer-actions.io .btn{padding:6px 12px;font-size:13px;min-height:34px;cursor:pointer}
 #ioNote:empty{display:none}
+.iopaste{display:flex;flex-direction:column;gap:8px;border:1px solid var(--stroke);border-radius:var(--rc);padding:10px}
+.iopaste textarea{min-height:88px;font-family:var(--f-mono);font-size:11px;line-height:1.4;word-break:break-all}
 .projlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .proj{border:1px solid var(--line);border-radius:var(--rc);background:var(--bg);display:flex;flex-direction:column}
 .proj.cur{border-color:var(--fg)}
@@ -496,8 +498,15 @@ textarea.small{min-height:76px;font-family:var(--f-mono);font-size:12.5px;line-h
       <button class="btn" id="newFromCurrent" type="button">Duplicar el actual</button>
     </div>
     <div class="drawer-actions io">
-      <label class="btn" for="impFile">Importar…<input type="file" id="impFile" accept=".galera,.json,application/json" hidden></label>
       <button class="btn" id="expAll" type="button">Exportar todos</button>
+      <button class="btn" id="copyAll" type="button">Copiar todos</button>
+      <label class="btn" for="impFile">Importar…<input type="file" id="impFile" accept=".galera,.json,application/json,text/plain" hidden></label>
+      <button class="btn" id="pasteOpen" type="button">Pegar</button>
+    </div>
+    <div class="iopaste" id="ioPaste" hidden>
+      <p class="note" id="ioPasteHint">Pega aquí el texto que copiaste en la otra Galera.</p>
+      <textarea id="ioText" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="GALERA:…"></textarea>
+      <div class="drawer-actions"><button class="btn primary" id="ioImport" type="button">Importar texto</button><button class="btn" id="ioClose" type="button">Cerrar</button></div>
     </div>
     <p class="note" id="ioNote" role="status"></p>
     <p class="note" id="storeNote"></p>
@@ -5184,23 +5193,62 @@ async function deleteProject(id){
 }
 /* Exportar / importar proyectos como archivo .galera (JSON) */
 function ioNote(t, err){ const el = $("ioNote"); el.textContent = t; el.style.color = err ? "var(--bad)" : ""; clearTimeout(ioNote.t); ioNote.t = setTimeout(() => el.textContent = "", 8000); }
-async function exportProjects(ids){
-  await saveProjNow();
-  const list = PROJ.filter(p => ids.includes(p.id));
+/* El proyecto abierto se toma tal como está ahora (sin esperar al guardado), para no perder el toque del usuario:
+   iPhone solo deja compartir o copiar si se hace en el mismo toque. */
+function exportList(ids){
+  return PROJ.filter(p => ids.includes(p.id)).map(p => {
+    const q = {...p};
+    if(p.id === CUR.id){ q.name = CUR.name; q.state = snapshotState(); Object.assign(q, projSummary()); }
+    try{ const o = JSON.parse(q.state); delete o._comp; q.state = JSON.stringify(o); }catch(e){}
+    return q;
+  });
+}
+function b64enc(str){ const b = new TextEncoder().encode(str); let s = ""; for(let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+function b64dec(t){ const s = atob(t); const b = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return new TextDecoder().decode(b); }
+function showPaste(text){
+  $("ioPaste").hidden = false;
+  const ta = $("ioText");
+  if(text){ ta.value = text; $("ioPasteHint").textContent = "No se pudo copiar solo. Toca el cuadro, elige «Seleccionar todo» y luego «Copiar»."; ta.focus(); ta.select(); }
+  else { ta.value = ""; $("ioPasteHint").textContent = "Pega aquí el texto que copiaste en la otra Galera."; ta.focus(); }
+}
+function copyProjects(ids){
+  saveProjNow();
+  const list = exportList(ids);
+  if(!list.length){ ioNote("No hay proyectos para copiar.", true); return; }
+  const text = "GALERA:" + b64enc(JSON.stringify({galera:1, exported:Date.now(), projects:list}));
+  const ok = () => ioNote(list.length === 1 ? "Proyecto copiado. Ábrelo en la otra Galera: ☰ → Pegar." : `${list.length} proyectos copiados. En la otra Galera: ☰ → Pegar.`);
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, () => showPaste(text));
+    else showPaste(text);
+  }catch(e){ showPaste(text); }
+}
+function exportProjects(ids){
+  saveProjNow();
+  const list = exportList(ids);
   if(!list.length){ ioNote("No hay proyectos para exportar.", true); return; }
-  if(!downloads){ ioNote("Las descargas no están disponibles en esta vista.", true); return; }
-  const slug = t => (String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "proyecto").slice(0, 40);
+  if(!downloads){ ioNote("Aquí no se pueden descargar archivos: los copio como texto.", false); copyProjects(ids); return; }
+  const slug = t => (String(t).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "proyecto").slice(0, 40);
   const filename = list.length === 1 ? `${slug(list[0].name)}.galera` : `galera-proyectos-${new Date().toISOString().slice(0,10)}.galera`;
-  const data = JSON.stringify({galera:1, exported:Date.now(), projects:list}, null, 0);
-  try{ await downloads.save({filename, data}); ioNote(list.length === 1 ? "Proyecto exportado." : `${list.length} proyectos exportados.`); }
-  catch(err){ ioNote(err && err.code === "declined" ? "Exportación cancelada." : "No se pudo exportar.", !(err && err.code === "declined")); }
+  const data = JSON.stringify({galera:1, exported:Date.now(), projects:list});
+  downloads.save({filename, data}).then(
+    () => ioNote(list.length === 1 ? "Proyecto exportado." : `${list.length} proyectos exportados.`),
+    err => { if(err && err.code === "declined") ioNote("Exportación cancelada."); else { ioNote("No se pudo guardar el archivo: los copio como texto."); copyProjects(ids); } });
 }
 async function importProjects(file){
-  let o;
-  try{ o = JSON.parse(await file.text()); }catch(e){ ioNote("Ese archivo no es un proyecto de Galera.", true); return; }
+  let t = "";
+  try{ t = await file.text(); }catch(e){}
+  return importText(t);
+}
+async function importText(t){
+  t = String(t || "").trim();
+  let o = null;
+  try{
+    if(/^GALERA:/i.test(t)) o = JSON.parse(b64dec(t.slice(7).replace(/\s+/g, "")));
+    else o = JSON.parse(t);
+  }catch(e){ o = null; }
   const list = Array.isArray(o && o.projects) ? o.projects : (o && o.state ? [o] : []);
   const ok = list.filter(p => p && typeof p.state === "string" && (() => { try{ return typeof JSON.parse(p.state) === "object"; }catch(e){ return false; } })());
-  if(!ok.length){ ioNote("Ese archivo no tiene proyectos de Galera.", true); return; }
+  if(!ok.length){ ioNote("Eso no es un proyecto de Galera. Copia de nuevo con «Copiar todos».", true); return false; }
   await saveProjNow();
   const names = new Set(PROJ.map(p => p.name));
   let last = null;
@@ -5212,9 +5260,11 @@ async function importProjects(file){
     const doc = {id, name, created: p.created || now, updated: now, words: p.words || 0, fmt: p.fmt || "", cols: p.cols || 1, first: p.first || "", state: p.state};
     if(await putProject(doc)){ PROJ.push(doc); last = id; }
   }
-  if(!last){ ioNote("No se pudo guardar lo importado.", true); return; }
+  if(!last){ ioNote("No se pudo guardar lo importado.", true); return false; }
+  $("ioPaste").hidden = true;
   ioNote(ok.length === 1 ? `Importado: ${PROJ.find(p => p.id === last).name}.` : `${ok.length} proyectos importados.`);
   if(ok.length === 1) await openProject(last); else renderProjList();
+  return true;
 }
 let PJ_UI = {renaming:null, confirming:null};
 function relDate(ms){
@@ -5228,7 +5278,7 @@ function renderProjList(){
   const list = [...PROJ].sort((a,b) => b.updated - a.updated);
   $("storeNote").textContent = STORE.mode === "db"
     ? "Se guardan solos en tu cuenta: los ves en tu computador y en tu iPhone."
-    : "Se guardan solos en este dispositivo. Para pasarlos a otro, usa Exportar y luego Importar allá.";
+    : "Se guardan solos en este dispositivo. Para pasarlos a otro, usa Copiar todos y luego Pegar allá.";
   $("projList").innerHTML = list.map(p => {
     const cur = p.id === CUR.id;
     const meta = `${relDate(p.updated)} · ${esc(p.fmt || "")} · ${p.cols || 1} col. · ${p.words || 0} palabras`;
@@ -5328,6 +5378,10 @@ function bindProjects(){
   $("newProj").onclick = () => createProject(false);
   $("newFromCurrent").onclick = () => createProject(true);
   $("expAll").onclick = () => exportProjects(PROJ.map(p => p.id));
+  $("copyAll").onclick = () => copyProjects(PROJ.map(p => p.id));
+  $("pasteOpen").onclick = () => showPaste("");
+  $("ioClose").onclick = () => { $("ioPaste").hidden = true; };
+  $("ioImport").onclick = () => importText($("ioText").value);
   $("impFile").onchange = e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if(f) importProjects(f); };
   bindLook();
   document.addEventListener("keydown", e => { if(e.key === "Escape" && !$("drawer").hidden) closeDrawer(); });

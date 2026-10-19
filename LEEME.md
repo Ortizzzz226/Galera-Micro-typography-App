@@ -28,10 +28,10 @@ En uno o dos minutos la versión nueva está publicada. Cada persona la recibe s
 
 - Se guardan en cada dispositivo, dentro de la app. Actualizar la app no los borra.
 - Si borras el ícono de la app, se borran sus proyectos. Antes de hacerlo, usa **☰ → Exportar todos**.
-- Para pasar un proyecto a otro dispositivo, usa **Exportar** en ese proyecto (archivo `.galera`). En el otro dispositivo, usa **☰ → Importar…**.
+- Para pasar proyectos a otro dispositivo o a esta app: en la otra Galera usa **☰ → Copiar todos**, y aquí **☰ → Pegar** e **Importar texto**. También sirve **Exportar** (archivo `.galera`) e **Importar…**.
 
 ## Diferencias con la versión dentro de Claude
 
 - No tiene «Sugerir sinónimos», porque eso lo hace Claude.
-- Los proyectos no se sincronizan solos entre dispositivos. Para pasarlos se usa Exportar e Importar.
+- Los proyectos no se sincronizan solos entre dispositivos. Para pasarlos se usa Copiar todos y Pegar.
 - No necesita cuenta de Claude: cualquiera con el enlace puede usarla.

@@ -1,9 +1,9 @@
-/* Galera · service worker. Versión: 2026.10.19-0927
+/* Galera · service worker. Versión: 2026.10.19-0941
    - La página (index.html) se pide primero a internet, para que las actualizaciones lleguen solas;
      sin conexión se usa la copia guardada.
    - Íconos y librerías se guardan al instalar.
    - Las fuentes de Google se guardan la primera vez que se usan. */
-const V = "galera-2026.10.19-0927";
+const V = "galera-2026.10.19-0941";
 const FONTS = "galera-fonts";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/favicon-32.png",
   "vendor/jszip.min.js", "vendor/jspdf.umd.min.js", "vendor/docx.umd.js"];
